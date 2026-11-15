@@ -16,16 +16,42 @@ agent ──▶ Bifrost ──▶ model: "run: pip install flask-jwt-auth-helper
 
 ## See it work
 
+### The genuine run: real Bifrost, real model, live registries
+
+Nothing in this path is scripted. A real model decides what to install, a real Bifrost gateway carries the request, pkgguard checks the command against the live npm / PyPI / OSV, and the agent reacts to what it is told.
+
 ```bash
-go run ./cmd/pkgguard demo                 # scripted agent session through the real Bifrost core
+# 1. a Bifrost gateway with a provider whose key you control (see Bifrost's provider docs)
+# 2. pkgguard in front of it, with the dashboard
+go run ./cmd/pkgguard proxy -upstream http://127.0.0.1:8080 -dashboard 127.0.0.1:8099
+# 3. a small real coding agent (dry run by default: it prints the commands, it does not run them)
+go run ./cmd/pkgguard agent -model anthropic/claude-sonnet-5-5 "add JWT auth to my Flask app"
+```
+
+`pkgguard agent` sends the task to any OpenAI-compatible endpoint with one `bash` tool and runs the usual tool loop. If pkgguard stops an action, the agent shows the model the explanation and lets it try again, which is the recovery behaviour to look for. `-exec` runs allowed commands in a throwaway temp directory; the default is a dry run.
+
+### What has been verified, and with what
+
+| Verified | How | Not a real model? |
+|---|---|---|
+| Parser, checks, scanner, audit, approvals, dashboard, stream and proxy logic | unit tests (`go test ./...`) | tests use fakes by design |
+| The plugin inside the **real Bifrost core** (Go SDK) | `bifrost_e2e_test.go` | a stand-in plugin plays the provider |
+| **Real Bifrost gateway** (built from the official source) behind `pkgguard proxy`: error bodies and `/v1/models` byte-identical; a tool-call chat completion rewritten when blocked and untouched when safe; the SSE stream withheld/reassembled correctly | run by hand against a gateway on localhost, with `pkgguard agent` driving it | **yes: the gateway was real, the model behind it was a stand-in** (no model API key was available), so this proves the wire format and the pipeline, not model behaviour |
+| Live registry / OSV checks (`debug@4.4.2` blocked, `express` allowed, `reqeusts` blocked, lockfile audit) | `pkgguard check` / `audit` against the real services | no model involved |
+
+**Not yet verified with a real model:** how often a real model hallucinates an install, and whether it recovers sensibly after a block. The mechanism is in place and the agent is ready; the measurement needs a provider key. We do not report any hallucination-rate number because we have not measured one.
+
+### No gateway or key? The offline demo (scripted)
+
+```bash
+go run ./cmd/pkgguard demo                 # scripted
 go run ./cmd/pkgguard demo -dashboard      # same, then keep the live dashboard open (approve a package)
-go run ./cmd/pkgguard proxy -upstream http://127.0.0.1:8080   # guard a stock Bifrost, no plugin loading
-go run ./cmd/pkgguard bench                # the red-team benchmark below
+go run ./cmd/pkgguard bench                # the red-team benchmark below (synthetic)
 go run ./cmd/pkgguard check "npm install expresss"      # one command, checked live against npm / PyPI / OSV
 go run ./cmd/pkgguard audit package-lock.json           # audit a lockfile (one batched OSV request)
 ```
 
-The demo runs seven agent turns through a real Bifrost client with pkgguard installed. A scripted stand-in plays the model (a real model's mistakes, replayed deterministically); nothing is ever executed. Abridged:
+`demo` is **scripted**: a stand-in plays the model, replaying the kinds of mistakes models make (an invented name, a typo, a malicious pick) through a real Bifrost core with pkgguard installed, in a synthetic package world. It shows what the output looks like. It is not evidence about real models. Abridged:
 
 ```
 task: Add JWT auth to my Flask app
@@ -121,7 +147,7 @@ pkgguard uses only Bifrost's supported extension points. Three ways to run it, f
 Bifrost loads Go plugins only in a dynamically linked build, which is not the default install. Proxy mode needs no plugin at all, so it works with the stock Docker / npx / binary Bifrost. pkgguard runs as an OpenAI-compatible reverse proxy in front of the gateway and applies the same engine, streaming guard and dashboard to every chat-completion response:
 
 ```bash
-npx -y @maximhq/bifrost                                   # your stock gateway on :8080
+npx -y @maximhq/bifrost                                   # your gateway on :8080 (Bifrost's documented quick start; or its Docker image)
 go run ./cmd/pkgguard proxy -upstream http://127.0.0.1:8080 -dashboard 127.0.0.1:8099
 # then point the agent's OpenAI base URL at http://127.0.0.1:8089/v1 instead of :8080
 ```
@@ -212,7 +238,7 @@ The idea of an install-time package guard for AI agents comes from [lb2002/gatek
 - Version ranges are resolved approximately (to the registry's `latest`); exact versions and dist-tags are exact. Dependency checking is one level deep.
 - The typosquat list is a seed of ~260 well-known names, not the whole registry.
 - Streaming: chat-completion streams only (not Responses-API streams), tool calls arrive at the end of the stream, and the stream hook was exercised with replayed chunks in tests, not against a live gateway.
-- Proxy mode is tested against a fake OpenAI-compatible upstream (JSON, SSE and gzip), not against a running Bifrost server. The `npx` line above is Bifrost's documented quick start; we did not run it here.
+- Proxy mode is unit-tested against a fake OpenAI-compatible upstream and was checked by hand against a real Bifrost gateway with a stand-in model behind it (see the verification table), never yet with a real model. Bifrost's `npx -y @maximhq/bifrost` launcher returned a 404 on the Windows machine this was built on, so that gateway was built from the official source instead; the README's `npx` line is the documented quick start, not something we got working there.
 - The Claude reviewer has been exercised against a fake API server in tests, not against the live API. PyPI `setup.py` is not reviewed.
 - The `.so` build could not be tested in the authoring environment (Windows has no Go plugin mode); CI builds it on Linux.
 

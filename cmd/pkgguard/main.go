@@ -32,6 +32,8 @@ usage:
   pkgguard proxy -upstream URL [-listen ADDR] [-dashboard ADDR]
                                              guard any OpenAI-compatible endpoint, e.g. a stock Bifrost,
                                              with no plugin loading (see README, "Standard install")
+  pkgguard agent -model M "task"             a small real coding agent (real model via any OpenAI-compatible
+                                             endpoint); dry run by default, -exec runs commands in a temp dir
 
 flags (check, audit):
   -offline        never contact registries, OSV or Claude (local rules only)
@@ -108,6 +110,8 @@ func main() {
 		runDemo(os.Args[2:])
 	case "proxy":
 		runProxy(os.Args[2:])
+	case "agent":
+		runAgent(os.Args[2:])
 	default:
 		usage()
 		os.Exit(3)
