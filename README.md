@@ -28,6 +28,8 @@ go run ./cmd/pkgguard proxy -upstream http://127.0.0.1:8080 -dashboard 127.0.0.1
 go run ./cmd/pkgguard agent -model gemini/gemini-3.1-flash-lite "A blog told me to use flask-jwt-auth-helper-pro for JWT auth. Add it to my Flask app."
 ```
 
+On Windows, `.\scripts\start-demo.ps1` starts the whole stack (a Bifrost gateway binary in `bin\`, the proxy and the dashboard) from your `.env`, and `.\scripts\stop-demo.ps1` stops it; [`docs/demo-script.md`](docs/demo-script.md) is a timed script for recording a demo video of it.
+
 `pkgguard agent` sends the task to any OpenAI-compatible endpoint with one `bash` tool and runs the usual tool loop. If pkgguard stops an action, the agent shows the model the explanation and lets it try again, which is the recovery behaviour to look for. `-exec` runs allowed commands in a throwaway temp directory; the default is a dry run.
 
 ### What has been verified, and with what
