@@ -1,0 +1,22 @@
+{
+  "plugins": [
+    {
+      "name": "pkgguard",
+      "display_name": "Package install guard",
+      "path": "/path/to/pkgguard.so",
+      "enabled": true,
+      "config": {
+        "mode": "enforce",
+        "block_at": "high",
+        "warn_at": "medium",
+        "min_age_hours": 24,
+        "allowed_registries": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"],
+        "allow": [],
+        "deny": [],
+        "audit_log": "/var/log/bifrost/pkgguard.jsonl",
+        "dashboard_addr": "127.0.0.1:8099",
+        "approvals_file": "/var/lib/bifrost/pkgguard-approvals.json"
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./... -count=1
+      - name: red-team benchmark (fails on any false block or a regression)
+        run: go run ./cmd/pkgguard bench
+      - name: native plugin builds (Linux)
+        run: CGO_ENABLED=1 go build -buildmode=plugin -o build/pkgguard.so ./plugin
