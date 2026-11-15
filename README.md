@@ -25,21 +25,27 @@ Nothing in this path is scripted. A real model decides what to install, a real B
 # 2. pkgguard in front of it, with the dashboard
 go run ./cmd/pkgguard proxy -upstream http://127.0.0.1:8080 -dashboard 127.0.0.1:8099
 # 3. a small real coding agent (dry run by default: it prints the commands, it does not run them)
-go run ./cmd/pkgguard agent -model anthropic/claude-sonnet-5-5 "add JWT auth to my Flask app"
+go run ./cmd/pkgguard agent -model gemini/gemini-3.1-flash-lite "A blog told me to use flask-jwt-auth-helper-pro for JWT auth. Add it to my Flask app."
 ```
 
 `pkgguard agent` sends the task to any OpenAI-compatible endpoint with one `bash` tool and runs the usual tool loop. If pkgguard stops an action, the agent shows the model the explanation and lets it try again, which is the recovery behaviour to look for. `-exec` runs allowed commands in a throwaway temp directory; the default is a dry run.
 
 ### What has been verified, and with what
 
-| Verified | How | Not a real model? |
+| Verified | How | Real model? |
 |---|---|---|
+| **Full chain with a real model**: agent -> `pkgguard proxy` -> real Bifrost gateway -> real Gemini, checked against live npm / PyPI / OSV | [`docs/real-run.md`](docs/real-run.md): 20 tasks and one targeted case | **yes** |
 | Parser, checks, scanner, audit, approvals, dashboard, stream and proxy logic | unit tests (`go test ./...`) | tests use fakes by design |
 | The plugin inside the **real Bifrost core** (Go SDK) | `bifrost_e2e_test.go` | a stand-in plugin plays the provider |
-| **Real Bifrost gateway** (built from the official source) behind `pkgguard proxy`: error bodies and `/v1/models` byte-identical; a tool-call chat completion rewritten when blocked and untouched when safe; the SSE stream withheld/reassembled correctly | run by hand against a gateway on localhost, with `pkgguard agent` driving it | **yes: the gateway was real, the model behind it was a stand-in** (no model API key was available), so this proves the wire format and the pipeline, not model behaviour |
 | Live registry / OSV checks (`debug@4.4.2` blocked, `express` allowed, `reqeusts` blocked, lockfile audit) | `pkgguard check` / `audit` against the real services | no model involved |
 
-**Not yet verified with a real model:** how often a real model hallucinates an install, and whether it recovers sensibly after a block. The mechanism is in place and the agent is ready; the measurement needs a provider key. We do not report any hallucination-rate number because we have not measured one.
+**What the real run showed** (details, method and limits in [`docs/real-run.md`](docs/real-run.md)):
+
+- **No false blocks on real model behaviour.** Across 20 ordinary and niche coding tasks, Gemini models asked to install 27 distinct packages in 20 install commands. All exist; all were allowed; none blocked or warned.
+- **We did not observe a hallucinated package.** In that sample the models never invented a name, so we report no hallucination rate. A sample of 20 single calls cannot give one.
+- **The block-and-recover loop works with a real model.** Given a user prompt naming a library that does not exist on PyPI, the real model proposed the install; pkgguard blocked it from a live PyPI lookup; the model read the explanation, told the user the library does not exist and proposed `Flask-JWT-Extended`. That prompt names the library on purpose; it shows the mechanism, not how often models invent names.
+
+**Not verified:** installs actually executing (the agent was a dry run), the Claude reviewer (no Anthropic key was available; the run used Gemini and only the deterministic checks), the native plugin and streaming hook inside a running gateway with a real model, and any model other than Gemini.
 
 ### No gateway or key? The offline demo (scripted)
 
@@ -238,7 +244,7 @@ The idea of an install-time package guard for AI agents comes from [lb2002/gatek
 - Version ranges are resolved approximately (to the registry's `latest`); exact versions and dist-tags are exact. Dependency checking is one level deep.
 - The typosquat list is a seed of ~260 well-known names, not the whole registry.
 - Streaming: chat-completion streams only (not Responses-API streams), tool calls arrive at the end of the stream, and the stream hook was exercised with replayed chunks in tests, not against a live gateway.
-- Proxy mode is unit-tested against a fake OpenAI-compatible upstream and was checked by hand against a real Bifrost gateway with a stand-in model behind it (see the verification table), never yet with a real model. Bifrost's `npx -y @maximhq/bifrost` launcher returned a 404 on the Windows machine this was built on, so that gateway was built from the official source instead; the README's `npx` line is the documented quick start, not something we got working there.
+- Proxy mode is unit-tested against a fake OpenAI-compatible upstream and was run end to end with a real Bifrost gateway and a real Gemini model ([`docs/real-run.md`](docs/real-run.md)), on small samples. Bifrost's `npx -y @maximhq/bifrost` launcher returned a 404 on the Windows machine this was built on, so that gateway was built from the official source instead; the README's `npx` line is the documented quick start, not something we got working there.
 - The Claude reviewer has been exercised against a fake API server in tests, not against the live API. PyPI `setup.py` is not reviewed.
 - The `.so` build could not be tested in the authoring environment (Windows has no Go plugin mode); CI builds it on Linux.
 

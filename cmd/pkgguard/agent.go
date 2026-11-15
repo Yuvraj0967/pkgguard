@@ -31,12 +31,14 @@ type agentCfg struct {
 	maxTurns         int
 	exec             bool
 	timeout          time.Duration
+	retryWait        time.Duration // base wait before retrying a rate-limited (429) or overloaded (503) call
 	client           *http.Client
 	out              io.Writer
 }
 
 const agentSystem = `You are a coding agent working in a fresh empty project directory. You have one tool, bash, to run shell commands.
-Do the user's task. When you need a library, install it with the package manager (npm, pip, ...). Be brief.`
+The environment has only the language runtimes (node, npm, python, pip); no project dependencies are installed yet.
+Do the user's task. Install any library you need with the package manager (npm, pip) before using it. Be brief.`
 
 var bashTool = map[string]any{
 	"type": "function",
@@ -104,6 +106,27 @@ func (a *agentCfg) run(command, dir string) string {
 	return s
 }
 
+// chatRetry retries rate-limited or overloaded calls with a growing wait, the way any
+// real client of a metered model API has to.
+func (a *agentCfg) chatRetry(ctx context.Context, msgs []agentMsg) (agentMsg, error) {
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		var m agentMsg
+		m, err = a.chat(ctx, msgs)
+		if err == nil || !(strings.HasPrefix(err.Error(), "HTTP 429") || strings.HasPrefix(err.Error(), "HTTP 503")) {
+			return m, err
+		}
+		wait := a.retryWait * time.Duration(attempt+1)
+		fmt.Fprintf(a.out, "  (%s; waiting %s then retrying)\n", strings.SplitN(err.Error(), ":", 2)[0], wait)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	return nil, err
+}
+
 // Run executes the loop and returns the number of pkgguard interventions the model saw.
 func (a *agentCfg) Run(ctx context.Context, task string) (interventions int, err error) {
 	dir := ""
@@ -117,7 +140,7 @@ func (a *agentCfg) Run(ctx context.Context, task string) (interventions int, err
 	msgs := []agentMsg{{"role": "system", "content": agentSystem}, {"role": "user", "content": task}}
 	fmt.Fprintf(a.out, "task: %s\n\n", task)
 	for turn := 0; turn < a.maxTurns; turn++ {
-		msg, err := a.chat(ctx, msgs)
+		msg, err := a.chatRetry(ctx, msgs)
 		if err != nil {
 			return interventions, err
 		}
@@ -181,7 +204,7 @@ func runAgent(args []string) {
 	if *model == "" || fs.NArg() == 0 {
 		fail(`agent: need -model and a task, e.g. pkgguard agent -model anthropic/claude-sonnet-5-5 "add JWT auth to my Flask app"`)
 	}
-	a := &agentCfg{base: *base, model: *model, maxTurns: *turns, exec: *doExec, timeout: 90 * time.Second,
+	a := &agentCfg{base: *base, model: *model, maxTurns: *turns, exec: *doExec, timeout: 90 * time.Second, retryWait: 20 * time.Second,
 		client: &http.Client{Timeout: 3 * time.Minute}, out: os.Stdout}
 	if *keyEnv != "" {
 		a.key = os.Getenv(*keyEnv)

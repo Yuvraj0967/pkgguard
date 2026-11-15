@@ -69,3 +69,24 @@ func TestAgentReportsGatewayErrors(t *testing.T) {
 		t.Fatalf("want an HTTP 400 error, got %v", err)
 	}
 }
+
+func TestAgentRetriesRateLimit(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			http.Error(w, `{"error":"quota"}`, http.StatusTooManyRequests)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": "ok"}}}})
+	}))
+	defer srv.Close()
+	var out bytes.Buffer
+	a := &agentCfg{base: srv.URL, model: "m", maxTurns: 2, timeout: time.Second, retryWait: time.Millisecond, client: srv.Client(), out: &out}
+	if _, err := a.Run(context.Background(), "x"); err != nil || calls != 3 {
+		t.Fatalf("calls=%d err=%v", calls, err)
+	}
+	if !strings.Contains(out.String(), "HTTP 429; waiting") {
+		t.Fatalf("the wait should be visible:\n%s", out.String())
+	}
+}
