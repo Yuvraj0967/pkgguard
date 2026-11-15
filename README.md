@@ -19,6 +19,7 @@ agent ──▶ Bifrost ──▶ model: "run: pip install flask-jwt-auth-helper
 ```bash
 go run ./cmd/pkgguard demo                 # scripted agent session through the real Bifrost core
 go run ./cmd/pkgguard demo -dashboard      # same, then keep the live dashboard open (approve a package)
+go run ./cmd/pkgguard proxy -upstream http://127.0.0.1:8080   # guard a stock Bifrost, no plugin loading
 go run ./cmd/pkgguard bench                # the red-team benchmark below
 go run ./cmd/pkgguard check "npm install expresss"      # one command, checked live against npm / PyPI / OSV
 go run ./cmd/pkgguard audit package-lock.json           # audit a lockfile (one batched OSV request)
@@ -113,9 +114,21 @@ Fast mode checks every pinned version against OSV in **one batched request** and
 
 ## Use it with Bifrost
 
-pkgguard uses only Bifrost's supported extension points. Two ways to run it:
+pkgguard uses only Bifrost's supported extension points. Three ways to run it, from "works on any install" to "deepest integration":
 
-### 1. Go SDK / embedded Bifrost
+### 1. Standard install: proxy mode (no plugin loading)
+
+Bifrost loads Go plugins only in a dynamically linked build, which is not the default install. Proxy mode needs no plugin at all, so it works with the stock Docker / npx / binary Bifrost. pkgguard runs as an OpenAI-compatible reverse proxy in front of the gateway and applies the same engine, streaming guard and dashboard to every chat-completion response:
+
+```bash
+npx -y @maximhq/bifrost                                   # your stock gateway on :8080
+go run ./cmd/pkgguard proxy -upstream http://127.0.0.1:8080 -dashboard 127.0.0.1:8099
+# then point the agent's OpenAI base URL at http://127.0.0.1:8089/v1 instead of :8080
+```
+
+Only `/chat/completions` responses are inspected (OpenAI format, which Bifrost serves for every provider it fronts); everything else is forwarded untouched, streamed or not. Streaming works the same way as below: tool-call fragments are withheld, reassembled, then emitted whole or replaced by the explanation. Gzip from the upstream is handled. Not covered in this mode: the Responses API, Anthropic-native `/v1/messages`, and MCP tool executions (use the plugin for those).
+
+### 2. Go SDK / embedded Bifrost
 
 ```go
 p, err := pkgguard.Init(map[string]any{"mode": "enforce", "dashboard_addr": "127.0.0.1:8099"})
@@ -128,7 +141,7 @@ client, err := bifrost.Init(ctx, schemas.BifrostConfig{
 
 [`bifrost_e2e_test.go`](bifrost_e2e_test.go) and `pkgguard demo` do exactly this against the real Bifrost core. The streaming hook is part of Bifrost's HTTP transport and applies to the gateway, not to the SDK.
 
-### 2. Standard Bifrost gateway (native plugin)
+### 3. Native Bifrost plugin (deepest integration)
 
 Dynamic plugins need a dynamically linked Bifrost build (see Bifrost's [building a dynamic binary](https://github.com/maximhq/bifrost/blob/main/docs/plugins/building-dynamic-binary.mdx)); Go's plugin mode exists on Linux and macOS only.
 
@@ -199,6 +212,7 @@ The idea of an install-time package guard for AI agents comes from [lb2002/gatek
 - Version ranges are resolved approximately (to the registry's `latest`); exact versions and dist-tags are exact. Dependency checking is one level deep.
 - The typosquat list is a seed of ~260 well-known names, not the whole registry.
 - Streaming: chat-completion streams only (not Responses-API streams), tool calls arrive at the end of the stream, and the stream hook was exercised with replayed chunks in tests, not against a live gateway.
+- Proxy mode is tested against a fake OpenAI-compatible upstream (JSON, SSE and gzip), not against a running Bifrost server. The `npx` line above is Bifrost's documented quick start; we did not run it here.
 - The Claude reviewer has been exercised against a fake API server in tests, not against the live API. PyPI `setup.py` is not reviewed.
 - The `.so` build could not be tested in the authoring environment (Windows has no Go plugin mode); CI builds it on Linux.
 

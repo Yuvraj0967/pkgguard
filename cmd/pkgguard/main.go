@@ -29,6 +29,9 @@ usage:
                                              (no file: whatever is in the current directory)
   pkgguard bench [-json] [-v]                run the built-in red-team benchmark (offline, deterministic)
   pkgguard demo [-dashboard] [-pause 1s]     scripted agent session through the real Bifrost core
+  pkgguard proxy -upstream URL [-listen ADDR] [-dashboard ADDR]
+                                             guard any OpenAI-compatible endpoint, e.g. a stock Bifrost,
+                                             with no plugin loading (see README, "Standard install")
 
 flags (check, audit):
   -offline        never contact registries, OSV or Claude (local rules only)
@@ -59,6 +62,14 @@ func addCommon(fs *flag.FlagSet) common {
 }
 
 func (c common) engine() *pkgguard.Engine {
+	e, err := pkgguard.NewEngine(c.config())
+	if err != nil {
+		fail("%v", err)
+	}
+	return e
+}
+
+func (c common) config() pkgguard.Config {
 	var cfg pkgguard.Config
 	if *c.cfgPath != "" {
 		b, err := os.ReadFile(*c.cfgPath)
@@ -73,11 +84,7 @@ func (c common) engine() *pkgguard.Engine {
 	if *c.monitor {
 		cfg.Mode = "monitor"
 	}
-	e, err := pkgguard.NewEngine(cfg)
-	if err != nil {
-		fail("%v", err)
-	}
-	return e
+	return cfg
 }
 
 func fail(f string, a ...any) {
@@ -99,6 +106,8 @@ func main() {
 		runBench(os.Args[2:])
 	case "demo":
 		runDemo(os.Args[2:])
+	case "proxy":
+		runProxy(os.Args[2:])
 	default:
 		usage()
 		os.Exit(3)
