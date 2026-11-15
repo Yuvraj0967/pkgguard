@@ -16,6 +16,8 @@ agent ──▶ Bifrost ──▶ model: "run: pip install flask-jwt-auth-helper
 
 ## See it work
 
+**Demo video (4 min, narrated):** https://drive.google.com/file/d/1PV_UYny9WLeU2-ZEQfeqcaJM6JQp2a6g/view?usp=sharing. The terminal scenes are re-rendered from the captured output of the real run described below (waits shortened); the dashboard scenes are real screenshots.
+
 ### The genuine run: real Bifrost, real model, live registries
 
 Nothing in this path is scripted. A real model decides what to install, a real Bifrost gateway carries the request, pkgguard checks the command against the live npm / PyPI / OSV, and the agent reacts to what it is told.
