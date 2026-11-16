@@ -235,9 +235,9 @@ Reading Bifrost's gateway code also settled a design question: the HTTP middlewa
 - The gateway position is what lets pkgguard guard *any* model behind Bifrost with no change to the agent.
 - This project was written with the help of Claude Code.
 
-## Inspiration and originality
+## What makes this design different
 
-The idea of an install-time package guard for AI agents comes from [lb2002/gatekeeper](https://github.com/lb2002/gatekeeper) (Meta hackathon). pkgguard is a new implementation in Go on a different surface and reuses none of its code. Ideas it borrows: a waiting period for brand-new versions, checking dependencies that do not exist publicly, and verdicts that must cite code that code verifies. What is different: it lives in the **gateway** (it covers every package manager and any agent that goes through Bifrost, with no PATH shims), it reads **model output** (including hallucinated names, which a shim cannot know about), it covers PyPI, crates.io, RubyGems, pnpm/yarn/bun and `curl | sh`, it enforces on **streamed** tool calls, it has a human approval loop with a hard floor, and it ships a benchmark with documented gaps. What Gatekeeper has that pkgguard does not: a live monitor of every new npm release, a campaign memory, and a hosted try-it page.
+Most install-time guards sit on the developer's machine, in front of one package manager. pkgguard lives in the **gateway**: it covers every package manager and any agent that goes through Bifrost, with no PATH shims. It reads **model output**, so it sees hallucinated names before anything is typed into a shell. It covers PyPI, crates.io, RubyGems, pnpm/yarn/bun and `curl | sh` as well as npm, it enforces on **streamed** tool calls, it has a human approval loop with a hard floor, and it ships a benchmark with documented gaps. What it does not have: a live monitor of new registry releases, a memory of past campaigns, or a hosted try-it page.
 
 ## Limits (read these)
 
